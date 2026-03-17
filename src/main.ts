@@ -21,6 +21,7 @@ class SchoolBellApp {
     this.initClock();
     this.setupEventListeners();
     this.initAudio();
+    this.initDeviceSelection();
   }
 
   private initAudio() {
@@ -30,6 +31,79 @@ class SchoolBellApp {
     // Fire alarm audio (realistic sound)
     this.fireAlarmAudio = new Audio('https://www.orangefreesounds.com/wp-content/uploads/2014/12/Fire-alarm-sound.mp3');
     this.fireAlarmAudio.loop = true;
+  }
+
+  private async initDeviceSelection() {
+    await this.refreshDevices();
+
+    // Re-check devices when they change (plugged/unplugged)
+    navigator.mediaDevices.ondevicechange = () => this.refreshDevices();
+
+    document.getElementById('audio-output-select')?.addEventListener('change', (e) => {
+        const deviceId = (e.target as HTMLSelectElement).value;
+        this.updateAudioOutput(deviceId);
+    });
+
+    document.getElementById('refresh-devices-btn')?.addEventListener('click', () => this.refreshDevices());
+  }
+
+  private async refreshDevices() {
+    try {
+        // Request temporary mic access to get named devices (privacy requirement)
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const outputs = devices.filter(d => d.kind === 'audiooutput');
+        const inputs = devices.filter(d => d.kind === 'audioinput');
+
+        const outSelect = document.getElementById('audio-output-select') as HTMLSelectElement;
+        const inSelect = document.getElementById('audio-input-select') as HTMLSelectElement;
+
+        if (outSelect) {
+            outSelect.innerHTML = '<option value="default">Alapértelmezett</option>';
+            outputs.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || `Eszköz (${d.deviceId.slice(0, 5)})`;
+                outSelect.appendChild(opt);
+            });
+        }
+
+        if (inSelect) {
+            inSelect.innerHTML = '<option value="default">Alapértelmezett</option>';
+            inputs.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d.deviceId;
+                opt.textContent = d.label || `Mikrofon (${d.deviceId.slice(0, 5)})`;
+                inSelect.appendChild(opt);
+            });
+        }
+    } catch (err) {
+        console.error('Error listing devices:', err);
+    }
+  }
+
+  private async updateAudioOutput(deviceId: string) {
+    // Web Audio API Context output
+    if (this.audioContext && (this.audioContext as any).setSinkId) {
+        try {
+            await (this.audioContext as any).setSinkId(deviceId);
+        } catch (err) {
+            console.error('Context SinkId error:', err);
+        }
+    }
+
+    // HTML5 Audio elements
+    const audios = [this.fireAlarmAudio, this.inBellAudio, this.outBellAudio];
+    for (const audio of audios) {
+        if (audio && (audio as any).setSinkId) {
+            try {
+                await (audio as any).setSinkId(deviceId);
+            } catch (err) {
+                console.error('Element SinkId error:', err);
+            }
+        }
+    }
   }
 
   private initClock() {
@@ -137,7 +211,14 @@ class SchoolBellApp {
       btn!.innerHTML = '🎤 MIKROFON';
     } else {
       try {
-        this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const inSelect = document.getElementById('audio-input-select') as HTMLSelectElement;
+        const deviceId = inSelect ? inSelect.value : 'default';
+        
+        const constraints = { 
+            audio: deviceId === 'default' ? true : { deviceId: { exact: deviceId } } 
+        };
+
+        this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
         if (!this.audioContext) this.audioContext = new AudioContext();
         this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
         this.micSource.connect(this.audioContext.destination);

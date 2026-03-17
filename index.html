@@ -40,6 +40,24 @@
             <input type="number" id="bell-duration" value="10" min="1" max="120">
           </div>
         </div>
+
+        <div class="controls-grid" style="margin-top: 1.5rem; border-top: 1px solid var(--glass-border); padding-top: 1.5rem;">
+          <div class="control-item">
+            <label>Kimeneti eszköz (Hangszóró)</label>
+            <select id="audio-output-select">
+              <option value="default">Rendszer alapértelmezett</option>
+            </select>
+          </div>
+          <div class="control-item">
+            <label>Bemeneti eszköz (Mikrofon)</label>
+            <select id="audio-input-select">
+              <option value="default">Rendszer alapértelmezett</option>
+            </select>
+          </div>
+          <div class="control-item" style="justify-content: flex-end;">
+            <button class="btn" id="refresh-devices-btn" style="padding: 0.5rem; font-size: 0.8rem;">Eszközök frissítése</button>
+          </div>
+        </div>
       </div>
 
       <div class="glass-card">
