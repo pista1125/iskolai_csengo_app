@@ -24,8 +24,11 @@ class SchoolBellApp {
   }
 
   private initAudio() {
-    // Hidden fire alarm audio (using a placeholder for now, user can change)
-    this.fireAlarmAudio = new Audio('https://www.soundjay.com/buttons/beep-01a.mp3'); // Placeholder
+    // Initializing the AudioContext for mic
+    if (!this.audioContext) this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    // Fire alarm audio (realistic sound)
+    this.fireAlarmAudio = new Audio('https://www.orangefreesounds.com/wp-content/uploads/2014/12/Fire-alarm-sound.mp3');
     this.fireAlarmAudio.loop = true;
   }
 
