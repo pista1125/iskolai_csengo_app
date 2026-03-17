@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="hu">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Iskolai Csengő - Smart Bell System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0f172a">
+  </head>
+  <body>
+    <div id="app">
+      <div class="glass-card">
+        <h1>Iskolai Csengő</h1>
+        
+        <div class="status-bar">
+          <div id="current-clock" class="clock">00:00:00</div>
+          <div class="control-item">
+             <label>Következő csengő</label>
+             <div id="next-bell" style="font-weight: 700; color: var(--accent-color);">--:--</div>
+          </div>
+        </div>
+
+        <div class="controls-grid">
+          <div class="control-item">
+            <label>Becsengetés Time</label>
+            <input type="time" id="in-bell-time">
+            <button class="btn" id="add-in-bell">Hozzáadás</button>
+          </div>
+          <div class="control-item">
+            <label>Kicsengetés Time</label>
+            <input type="time" id="out-bell-time">
+            <button class="btn" id="add-out-bell">Hozzáadás</button>
+          </div>
+          <div class="control-item">
+            <label>Lejátszási idő (mp)</label>
+            <input type="number" id="bell-duration" value="10" min="1" max="120">
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card">
+        <label>Hangfájlok Feltöltése</label>
+        <div class="controls-grid" style="margin-top: 0.5rem;">
+          <div class="control-item">
+            <label style="font-size: 0.7rem;">Becsengetés Hang</label>
+            <input type="file" id="in-bell-file" accept="audio/*">
+          </div>
+          <div class="control-item">
+            <label style="font-size: 0.7rem;">Kicsengetés Hang</label>
+            <input type="file" id="out-bell-file" accept="audio/*">
+          </div>
+        </div>
+      </div>
+
+      <div class="glass-card schedule-list" id="schedule-container">
+        <label>Mai Órarend / Csengetések</label>
+        <div id="schedule-rows">
+          <!-- Dinamikus sorok -->
+        </div>
+      </div>
+
+      <div class="action-buttons">
+        <button class="btn btn-danger btn-pulse" id="fire-alarm-btn" style="flex: 2;">
+          🔥 TŰZRIASZTÁS
+        </button>
+        <button class="btn" id="mic-toggle-btn" style="flex: 1;">
+          🎤 MIKROFON
+        </button>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js');
+        });
+      }
+    </script>
+  </body>
+</html>
