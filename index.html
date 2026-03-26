@@ -4,103 +4,118 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Iskolai Csengő - Smart Bell System</title>
+    <title>School Bell - Modern Neon Edition</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;800&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#030712">
   </head>
   <body>
     <div id="app">
-      <div class="glass-card">
-        <h1>Iskolai Csengő</h1>
-        
-        <div class="status-bar">
-          <div id="current-clock" class="clock">00:00:00</div>
-          <div class="control-item">
-             <label>Következő csengő</label>
-             <div id="next-bell" style="font-weight: 700; color: var(--accent-color);">--:--</div>
+      <div class="glass-container">
+        <!-- Main Status Card -->
+        <div class="glass-card hero-card">
+          <div class="hero-header">
+            <div class="badge">AKTÍV ÜZEMMÓD: <span id="mode-status">AUTOMATIKUS</span></div>
+          </div>
+          
+          <div class="clock-section">
+            <div id="current-clock" class="digital-clock">00:00:00</div>
+            <div id="current-date" class="date-footer">2026. MÁRCIUS 26. CSÜTÖRTÖK</div>
+          </div>
+
+          <div class="status-center">
+            <div class="status-label">KÖVETKEZŐ CSENGŐ</div>
+            <div class="glow-box">
+              <div id="next-bell" class="next-time">--:--</div>
+              <div class="sub-status" id="bell-status-text">ÜTEMEZÉS SZERINT</div>
+            </div>
+          </div>
+
+          <div class="control-section">
+            <h3 class="section-title">BEÁLLÍTÁSOK & VEZÉRLÉS</h3>
+            
+            <div class="settings-list">
+              <div class="setting-row">
+                <div class="setting-text">
+                  <span class="label">HÉTVÉGI CSENGETÉS</span>
+                  <span class="desc">Hétvégi csengetés engedélyezése</span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="weekend-ringing">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="main-actions">
+              <button class="btn btn-neon-red" id="manual-ring-btn">
+                <i data-lucide="bell"></i> MANUÁLIS CSENGETÉS
+              </button>
+              <button class="btn btn-neon-green" id="mic-toggle-btn">
+                <i data-lucide="mic"></i> MIKROFON ADÁS
+              </button>
+            </div>
           </div>
         </div>
 
-        <div class="controls-grid">
-          <div class="control-item">
-            <label>Becsengetés Time</label>
-            <input type="time" id="in-bell-time">
-            <button class="btn" id="add-in-bell">Hozzáadás</button>
+        <!-- Sidebar / Secondary Controls -->
+        <div class="side-controls">
+          <div class="glass-card compact">
+            <h3><i data-lucide="clock"></i> IDŐZÍTÉS</h3>
+            <div class="input-group">
+              <label>Becsengetés</label>
+              <div class="input-row">
+                <input type="time" id="in-bell-time">
+                <button class="btn-icon" id="add-in-bell"><i data-lucide="plus"></i></button>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>Kicsengetés</label>
+              <div class="input-row">
+                <input type="time" id="out-bell-time">
+                <button class="btn-icon" id="add-out-bell"><i data-lucide="plus"></i></button>
+              </div>
+            </div>
+            <div class="input-group">
+              <label>Időtartam (mp)</label>
+              <input type="number" id="bell-duration" value="10" min="1" max="120">
+            </div>
           </div>
-          <div class="control-item">
-            <label>Kicsengetés Time</label>
-            <input type="time" id="out-bell-time">
-            <button class="btn" id="add-out-bell">Hozzáadás</button>
-          </div>
-          <div class="control-item">
-            <label>Lejátszási idő (mp)</label>
-            <input type="number" id="bell-duration" value="10" min="1" max="120">
-          </div>
-          <div class="control-item" style="flex-direction: row; align-items: center; gap: 0.5rem; padding-top: 1rem;">
-            <input type="checkbox" id="weekend-ringing" style="width: 1.2rem; height: 1.2rem; cursor: pointer;">
-            <label for="weekend-ringing" style="margin-bottom: 0; cursor: pointer; font-size: 0.75rem;">Hétvégi csengetés engedélyezése</label>
-          </div>
-        </div>
 
-        <div class="controls-grid" style="margin-top: 1.5rem; border-top: 1px solid var(--glass-border); padding-top: 1.5rem;">
-          <div class="control-item">
-            <label>Kimeneti eszköz (Hangszóró)</label>
-            <select id="audio-output-select">
-              <option value="default">Rendszer alapértelmezett</option>
-            </select>
+          <div class="glass-card compact">
+            <h3><i data-lucide="settings"></i> ESZKÖZÖK</h3>
+            <select id="audio-output-select"><option value="default">Kimenet: Alapértelmezett</option></select>
+            <select id="audio-input-select"><option value="default">Bemenet: Alapértelmezett</option></select>
+            <button class="btn btn-outline" id="refresh-devices-btn">Frissítés</button>
           </div>
-          <div class="control-item">
-            <label>Bemeneti eszköz (Mikrofon)</label>
-            <select id="audio-input-select">
-              <option value="default">Rendszer alapértelmezett</option>
-            </select>
-          </div>
-          <div class="control-item" style="justify-content: flex-end;">
-            <button class="btn" id="refresh-devices-btn" style="padding: 0.5rem; font-size: 0.8rem;">Eszközök frissítése</button>
+
+          <div class="glass-card compact">
+            <h3><i data-lucide="music"></i> HANGOK</h3>
+            <div class="file-grid">
+               <label class="file-label">BE <input type="file" id="in-bell-file" hidden></label>
+               <label class="file-label">KI <input type="file" id="out-bell-file" hidden></label>
+            </div>
           </div>
         </div>
       </div>
 
-      <div class="glass-card">
-        <label>Hangfájlok Feltöltése</label>
-        <div class="controls-grid" style="margin-top: 0.5rem;">
-          <div class="control-item">
-            <label style="font-size: 0.7rem;">Becsengetés Hang</label>
-            <input type="file" id="in-bell-file" accept="audio/*">
-          </div>
-          <div class="control-item">
-            <label style="font-size: 0.7rem;">Kicsengetés Hang</label>
-            <input type="file" id="out-bell-file" accept="audio/*">
-          </div>
-        </div>
+      <!-- Schedule List -->
+      <div class="glass-card list-card">
+        <h3><i data-lucide="list"></i> NAPI ÜTEMTERV</h3>
+        <div id="schedule-rows" class="schedule-grid"></div>
       </div>
 
-      <div class="glass-card schedule-list" id="schedule-container">
-        <label>Mai Órarend / Csengetések</label>
-        <div id="schedule-rows">
-          <!-- Dinamikus sorok -->
-        </div>
-      </div>
-
-      <div class="action-buttons">
-        <button class="btn btn-danger btn-pulse" id="fire-alarm-btn" style="flex: 2;">
-          🔥 TŰZRIASZTÁS
-        </button>
-        <button class="btn" id="mic-toggle-btn" style="flex: 1;">
-          🎤 MIKROFON
-        </button>
-      </div>
+      <!-- Emergency -->
+      <button class="btn btn-danger btn-pulse emergency-btn" id="fire-alarm-btn">
+        <i data-lucide="flame"></i> TŰZRIASZTÁS
+      </button>
     </div>
     <script type="module" src="/src/main.ts"></script>
     <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js');
-        });
-      }
+      lucide.createIcons();
     </script>
   </body>
 </html>

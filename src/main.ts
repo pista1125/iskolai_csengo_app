@@ -108,10 +108,20 @@ class SchoolBellApp {
 
   private initClock() {
     const clockEl = document.getElementById('current-clock')!;
+    const dateEl = document.getElementById('current-date')!;
     const update = () => {
       const now = new Date();
       const timeStr = now.toLocaleTimeString('hu-HU', { hour12: false });
       clockEl.textContent = timeStr;
+      
+      const dateStr = now.toLocaleDateString('hu-HU', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric',
+        weekday: 'long'
+      }).toUpperCase();
+      if (dateEl) dateEl.textContent = dateStr;
+
       this.checkBells(now);
     };
     update();
@@ -127,6 +137,7 @@ class SchoolBellApp {
 
     document.getElementById('fire-alarm-btn')?.addEventListener('click', () => this.toggleFireAlarm());
     document.getElementById('mic-toggle-btn')?.addEventListener('click', () => this.toggleMic());
+    document.getElementById('manual-ring-btn')?.addEventListener('click', () => this.playBell('in'));
 
     document.getElementById('weekend-ringing')?.addEventListener('change', () => {
       const isChecked = (document.getElementById('weekend-ringing') as HTMLInputElement).checked;
@@ -219,7 +230,8 @@ class SchoolBellApp {
       this.micStream = null;
       this.micSource?.disconnect();
       btn?.classList.remove('mic-active');
-      btn!.innerHTML = '🎤 MIKROFON';
+      btn!.innerHTML = '<i data-lucide="mic"></i> MIKROFON ADÁS';
+      (window as any).lucide.createIcons();
     } else {
       try {
         const inSelect = document.getElementById('audio-input-select') as HTMLSelectElement;
@@ -234,7 +246,8 @@ class SchoolBellApp {
         this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
         this.micSource.connect(this.audioContext.destination);
         btn?.classList.add('mic-active');
-        btn!.innerHTML = '🎤 ADÁSBA';
+        btn!.innerHTML = '<i data-lucide="mic-off"></i> LEÁLLÍTÁS';
+        (window as any).lucide.createIcons();
       } catch (err) {
         console.error('Mic access denied', err);
         alert('Nincs hozzáférés a mikrofonhoz!');
@@ -248,15 +261,21 @@ class SchoolBellApp {
     this.schedules.forEach(s => {
       const row = document.createElement('div');
       row.className = 'schedule-row';
+      const color = s.type === 'in' ? 'var(--success-neon)' : 'var(--danger-neon)';
+      const icon = s.type === 'in' ? 'bell' : 'bell-off';
       row.innerHTML = `
-        <span style="font-weight: 600; color: ${s.type === 'in' ? '#4ade80' : '#f472b6'}">
-          ${s.type === 'in' ? '🔔 BECSENGETÉS' : '🔕 KICSENGETÉS'}
-        </span>
-        <span style="font-size: 1.25rem;">${s.time}</span>
-        <button class="btn btn-danger" style="padding: 0.5rem; font-size: 0.8rem;" onclick="window.app.deleteSchedule('${s.id}')">Törlés</button>
+        <div style="display: flex; align-items: center; gap: 0.75rem; color: ${color}">
+          <i data-lucide="${icon}" style="width: 16px; height: 16px;"></i>
+          <span style="font-weight: 700; font-size: 0.7rem; letter-spacing: 0.1em;">${s.type === 'in' ? 'BECSENGETÉS' : 'KICSENGETÉS'}</span>
+        </div>
+        <div style="font-family: var(--font-digital); font-size: 1.5rem; color: var(--accent-neon); margin: 0.5rem 0;">${s.time}</div>
+        <button class="btn btn-neon-red" style="padding: 0.4rem; font-size: 0.7rem; border-radius: 8px; width: 100%;" onclick="window.app.deleteSchedule('${s.id}')">
+          <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i> TÖRLÉS
+        </button>
       `;
       container.appendChild(row);
     });
+    (window as any).lucide?.createIcons();
   }
 
   public deleteSchedule(id: string) {
@@ -290,12 +309,22 @@ class SchoolBellApp {
 
   private updateNextBell(currentTime: string, isWeekend: boolean) {
     const el = document.getElementById('next-bell')!;
+    const statusEl = document.getElementById('bell-status-text')!;
+    
     if (isWeekend) {
-      el.textContent = 'Hétvége';
+      el.textContent = 'HÉT-';
+      if (statusEl) statusEl.textContent = 'VÉGE';
       return;
     }
+    
     const next = this.schedules.find(s => s.time > currentTime);
     el.textContent = next ? next.time : '--:--';
+    
+    if (statusEl) {
+      statusEl.textContent = next 
+        ? (next.type === 'in' ? 'BECSENGETÉS JÖN' : 'KICSENGETÉS JÖN') 
+        : 'NINCS TÖBB MÁRA';
+    }
   }
 }
 
