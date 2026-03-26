@@ -108,12 +108,14 @@ class SchoolBellApp {
 
   private initClock() {
     const clockEl = document.getElementById('current-clock')!;
-    setInterval(() => {
+    const update = () => {
       const now = new Date();
       const timeStr = now.toLocaleTimeString('hu-HU', { hour12: false });
       clockEl.textContent = timeStr;
       this.checkBells(now);
-    }, 1000);
+    };
+    update();
+    setInterval(update, 1000);
   }
 
   private setupEventListeners() {
@@ -125,6 +127,11 @@ class SchoolBellApp {
 
     document.getElementById('fire-alarm-btn')?.addEventListener('click', () => this.toggleFireAlarm());
     document.getElementById('mic-toggle-btn')?.addEventListener('click', () => this.toggleMic());
+
+    document.getElementById('weekend-ringing')?.addEventListener('change', () => {
+      const isChecked = (document.getElementById('weekend-ringing') as HTMLInputElement).checked;
+      localStorage.setItem('weekend-ringing', isChecked ? 'true' : 'false');
+    });
   }
 
   private addSchedule(type: 'in' | 'out') {
@@ -165,13 +172,17 @@ class SchoolBellApp {
   private checkBells(now: Date) {
     const currentTime = now.toTimeString().slice(0, 5); // HH:MM
     const seconds = now.getSeconds();
+    const day = now.getDay();
+    const isWeekend = day === 0 || day === 6;
+    const weekendToggle = document.getElementById('weekend-ringing') as HTMLInputElement;
+    const isWeekendRingingEnabled = weekendToggle ? weekendToggle.checked : false;
 
-    if (seconds === 0) {
+    if (seconds === 0 && (!isWeekend || isWeekendRingingEnabled)) {
       const activeBells = this.schedules.filter(s => s.time === currentTime);
       activeBells.forEach(bell => this.playBell(bell.type));
     }
 
-    this.updateNextBell(currentTime);
+    this.updateNextBell(currentTime, isWeekend && !isWeekendRingingEnabled);
   }
 
   private playBell(type: 'in' | 'out') {
@@ -268,12 +279,22 @@ class SchoolBellApp {
     const outAudioData = localStorage.getItem('audio-out');
     if (outAudioData) this.outBellAudio = new Audio(outAudioData);
 
+    const weekendRinging = localStorage.getItem('weekend-ringing');
+    const weekendToggle = document.getElementById('weekend-ringing') as HTMLInputElement;
+    if (weekendRinging !== null && weekendToggle) {
+      weekendToggle.checked = weekendRinging === 'true';
+    }
+
     this.renderSchedules();
   }
 
-  private updateNextBell(currentTime: string) {
-    const next = this.schedules.find(s => s.time > currentTime);
+  private updateNextBell(currentTime: string, isWeekend: boolean) {
     const el = document.getElementById('next-bell')!;
+    if (isWeekend) {
+      el.textContent = 'Hétvége';
+      return;
+    }
+    const next = this.schedules.find(s => s.time > currentTime);
     el.textContent = next ? next.time : '--:--';
   }
 }
