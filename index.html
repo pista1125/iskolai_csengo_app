@@ -93,10 +93,39 @@
           </div>
 
           <div class="glass-card compact">
-            <h3><i data-lucide="music"></i> HANGOK</h3>
-            <div class="file-grid">
-               <label class="file-label">BE <input type="file" id="in-bell-file" hidden></label>
-               <label class="file-label">KI <input type="file" id="out-bell-file" hidden></label>
+            <h3><i data-lucide="music"></i> HANGOK ÉS CSENGŐK</h3>
+            <div class="audio-control-stack">
+               <div class="audio-slot">
+                 <div class="slot-header">
+                   <span class="badge-mini">BE</span>
+                   <span id="in-bell-name" class="current-track">Nincs kiválasztva</span>
+                 </div>
+                 <div class="slot-controls">
+                   <select id="in-preset-select" class="preset-select">
+                     <option value="custom">-- Egyéni feltöltés --</option>
+                   </select>
+                   <label class="btn-upload">
+                     <i data-lucide="upload"></i>
+                     <input type="file" id="in-bell-file" hidden>
+                   </label>
+                 </div>
+               </div>
+
+               <div class="audio-slot">
+                 <div class="slot-header">
+                   <span class="badge-mini danger">KI</span>
+                   <span id="out-bell-name" class="current-track">Nincs kiválasztva</span>
+                 </div>
+                 <div class="slot-controls">
+                   <select id="out-preset-select" class="preset-select">
+                     <option value="custom">-- Egyéni feltöltés --</option>
+                   </select>
+                   <label class="btn-upload">
+                     <i data-lucide="upload"></i>
+                     <input type="file" id="out-bell-file" hidden>
+                   </label>
+                 </div>
+               </div>
             </div>
           </div>
         </div>

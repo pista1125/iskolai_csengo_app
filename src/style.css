@@ -281,14 +281,84 @@ input[type="time"], input[type="number"], select {
   gap: 0.5rem;
 }
 
-.file-label {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px dashed var(--glass-border);
+.audio-control-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.audio-slot {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.slot-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.badge-mini {
+  font-size: 0.6rem;
+  font-weight: 800;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--success-neon);
+  border: 1px solid var(--success-neon);
+}
+
+.badge-mini.danger {
+  background: rgba(244, 63, 94, 0.1);
+  color: var(--danger-neon);
+  border: 1px solid var(--danger-neon);
+}
+
+.current-track {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  max-width: 150px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+.slot-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.preset-select {
+  flex: 1;
+  font-size: 0.8rem;
   padding: 0.5rem;
-  text-align: center;
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.btn-upload {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 10px;
-  font-size: 0.75rem;
   cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-upload:hover {
+  background: var(--accent-neon);
+  color: var(--bg-color);
+  border-color: var(--accent-neon);
 }
 
 .schedule-grid {
