@@ -123,6 +123,8 @@ body {
   text-align: center;
   gap: 2.5rem;
   border: 1px solid rgba(34, 211, 238, 0.2);
+  /* Contain any overflow from children (clock) */
+  overflow: hidden;
 }
 
 .badge {
@@ -145,11 +147,13 @@ body {
   text-shadow: 0 0 30px var(--accent-glow);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
-  display: inline-block;
-  min-width: 380px;
+  /* Do NOT use min-width here — on mobile it overflows and causes
+     a full-page layout reflow every second (the clock glitch bug) */
+  display: block;
+  width: 100%;
   text-align: center;
-  /* Prevent layout overflow artifacts */
-  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .date-footer {
