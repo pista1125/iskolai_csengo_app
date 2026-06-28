@@ -642,3 +642,49 @@ input:checked + .slider:before {
   background: rgba(16, 185, 129, 0.1) !important;
 }
 
+.btn-neon-blue {
+  background: rgba(34, 211, 238, 0.1);
+  color: var(--accent-neon);
+  border: 1px solid var(--accent-neon);
+}
+
+.btn-neon-blue:hover {
+  background: var(--accent-neon);
+  color: #000;
+  box-shadow: 0 0 20px var(--accent-glow);
+  transform: translateY(-2px);
+}
+
+.btn-neon-blue.mic-active {
+  background: var(--accent-neon);
+  color: #000;
+  box-shadow: 0 0 20px var(--accent-glow);
+  animation: pulse-blue 1.5s infinite;
+}
+
+@keyframes pulse-blue {
+  0% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.7); }
+  70% { box-shadow: 0 0 0 15px rgba(34, 211, 238, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); }
+}
+
+.autoplay-warning {
+  background: rgba(244, 63, 94, 0.9);
+  color: white;
+  border-bottom: 2px solid var(--danger-neon);
+  box-shadow: 0 0 20px var(--danger-glow);
+  padding: 1rem;
+  text-align: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  position: sticky;
+  top: 0;
+  z-index: 100000;
+  animation: pulse 2s infinite;
+}
+

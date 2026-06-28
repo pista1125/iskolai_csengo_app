@@ -28,6 +28,7 @@ class SchoolBellApp {
   private outBellAudio: HTMLAudioElement | null = null;
   private fireAlarmAudio: HTMLAudioElement | null = null;
   private isFireAlarmPlaying = false;
+  private audioUnlocked = false;
   
   // Local Mic variables
   private micStream: MediaStream | null = null;
@@ -129,6 +130,37 @@ class SchoolBellApp {
     if (!this.audioContext) this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     this.fireAlarmAudio = new Audio('https://www.orangefreesounds.com/wp-content/uploads/2014/12/Fire-alarm-sound.mp3');
     this.fireAlarmAudio.loop = true;
+
+    const unlock = () => {
+      if (this.audioUnlocked) return;
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        this.audioContext.resume();
+      }
+      
+      const silentPlay = (audio: HTMLAudioElement | null) => {
+        if (audio) {
+          audio.play().then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+          }).catch(e => console.log('Autoplay unlock audio failed:', e));
+        }
+      };
+      
+      silentPlay(this.fireAlarmAudio);
+      silentPlay(this.inBellAudio);
+      silentPlay(this.outBellAudio);
+      
+      this.audioUnlocked = true;
+      
+      const banner = document.getElementById('autoplay-warning-banner');
+      if (banner) banner.classList.add('hidden');
+      
+      document.removeEventListener('click', unlock);
+      document.removeEventListener('keydown', unlock);
+    };
+    
+    document.addEventListener('click', unlock);
+    document.addEventListener('keydown', unlock);
   }
 
   private async initDeviceSelection() {
@@ -230,7 +262,8 @@ class SchoolBellApp {
 
     document.getElementById('fire-alarm-btn')?.addEventListener('click', () => this.toggleFireAlarm());
     document.getElementById('mic-toggle-btn')?.addEventListener('click', () => this.toggleMic());
-    document.getElementById('manual-ring-btn')?.addEventListener('click', () => this.triggerManualRing());
+    document.getElementById('manual-ring-in-btn')?.addEventListener('click', () => this.triggerManualRing('in'));
+    document.getElementById('manual-ring-out-btn')?.addEventListener('click', () => this.triggerManualRing('out'));
 
     document.getElementById('weekend-ringing')?.addEventListener('change', () => {
       const isChecked = (document.getElementById('weekend-ringing') as HTMLInputElement).checked;
@@ -592,7 +625,7 @@ class SchoolBellApp {
       const micBtn = document.getElementById('mic-toggle-btn');
       if (micBtn) {
         micBtn.innerHTML = '<i data-lucide="mic"></i> MIKROFON ADÁS';
-        micBtn.className = 'btn btn-neon-green';
+        micBtn.className = 'btn btn-neon-blue';
         (window as any).lucide.createIcons();
       }
       
@@ -616,7 +649,7 @@ class SchoolBellApp {
       const micBtn = document.getElementById('mic-toggle-btn');
       if (micBtn) {
         micBtn.innerHTML = '<i data-lucide="mic"></i> TÁVOLI HANGOSBEMONDÓ';
-        micBtn.className = 'btn btn-neon-green';
+        micBtn.className = 'btn btn-neon-blue';
         (window as any).lucide.createIcons();
       }
       
@@ -684,7 +717,10 @@ class SchoolBellApp {
       if (isBellPlaying) this.inBellAudio!.volume = 0.2;
       if (isAlarmPlaying) this.fireAlarmAudio!.volume = 0.2;
       
-      audio.play();
+      audio.play().catch(e => {
+        console.error('Error playing broadcast audio:', e);
+        this.showAutoplayWarning();
+      });
       audio.onended = () => {
         if (this.inBellAudio) this.inBellAudio.volume = 1.0;
         if (this.fireAlarmAudio) this.fireAlarmAudio.volume = 1.0;
@@ -692,6 +728,19 @@ class SchoolBellApp {
     } catch (err) {
       console.error('Error playing broadcast audio:', err);
     }
+  }
+
+  private showAutoplayWarning() {
+    let banner = document.getElementById('autoplay-warning-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'autoplay-warning-banner';
+      banner.className = 'autoplay-warning';
+      banner.innerHTML = '<i data-lucide="volume-x"></i> KATTINTS BÁRHOVA A KÉPERNYŐRE A HANGOK ENGEDÉLYEZÉSÉHEZ!';
+      document.body.prepend(banner);
+      (window as any).lucide?.createIcons();
+    }
+    banner.classList.remove('hidden');
   }
 
   // --- REMOTE MICROPHONE RECORDING (PTT) ---
@@ -884,26 +933,31 @@ class SchoolBellApp {
     if (audio) {
       try {
         audio.currentTime = 0;
-        audio.play();
-        setTimeout(() => {
-          audio.pause();
-          audio.currentTime = 0;
-        }, durationLimit);
+        audio.play().then(() => {
+          setTimeout(() => {
+            audio.pause();
+            audio.currentTime = 0;
+          }, durationLimit);
+        }).catch((err) => {
+          console.error('Error playing bell:', err);
+          this.showAutoplayWarning();
+        });
       } catch (err) {
         console.error('Error playing bell:', err);
+        this.showAutoplayWarning();
       }
     }
   }
 
-  private triggerManualRing() {
+  private triggerManualRing(type: 'in' | 'out') {
     if (this.mode === 'controller') {
       if (!this.currentUser || !firebaseDb) return;
       set(ref(firebaseDb, `users/${this.currentUser.uid}/live/triggerRing`), {
-        type: 'in',
+        type,
         timestamp: Date.now()
       });
     } else {
-      this.playBell('in');
+      this.playBell(type);
     }
   }
 
