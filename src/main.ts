@@ -1,4 +1,20 @@
 import './style.css'
+import { auth as firebaseAuth, db as firebaseDb, isFirebaseConfigured, initFirebase, HARDCODED_CONFIG } from './firebase';
+import { 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut 
+} from 'firebase/auth';
+import type { User } from 'firebase/auth';
+import { 
+  ref, 
+  onValue, 
+  set, 
+  update, 
+  off 
+} from 'firebase/database';
+import type { DatabaseReference } from 'firebase/database';
 
 interface BellSchedule {
   id: string;
@@ -12,9 +28,32 @@ class SchoolBellApp {
   private outBellAudio: HTMLAudioElement | null = null;
   private fireAlarmAudio: HTMLAudioElement | null = null;
   private isFireAlarmPlaying = false;
+  
+  // Local Mic variables
   private micStream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
   private micSource: MediaStreamAudioSourceNode | null = null;
+
+  // Remote Broadcast variables
+  private mediaRecorder: MediaRecorder | null = null;
+  private recordedChunks: Blob[] = [];
+  private isRecording = false;
+  private recordingTimer: any = null;
+  private recordingStartTime = 0;
+
+  // Firebase state
+  private currentUser: User | null = null;
+  private mode: 'receiver' | 'controller' = 'receiver';
+  private schedulesRef: DatabaseReference | null = null;
+  private settingsRef: DatabaseReference | null = null;
+  private liveRef: DatabaseReference | null = null;
+
+  // Heartbeats & status checks
+  private lastTriggerRingTimestamp = 0;
+  private lastPlayedBroadcastTimestamp = 0;
+  private receiverLastSeen = 0;
+  private heartbeatInterval: any = null;
+  private receiverStatusInterval: any = null;
 
   private static readonly BELL_PRESETS = [
     { name: 'Levitating - Dua Lipa', url: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/59/dc/4d/59dc4dda-93ff-8f1c-c536-f005f6ea6af5/mzaf_3066686759813252385.plus.aac.p.m4a' },
@@ -31,17 +70,20 @@ class SchoolBellApp {
 
   constructor() {
     this.initPresetSelectors();
-    this.loadSchedules();
+    this.loadSchedulesLocally();
     this.initClock();
     this.setupEventListeners();
     this.initAudio();
     this.initDeviceSelection();
+    this.setupFirebaseUI();
   }
 
   private initPresetSelectors() {
     ['in', 'out'].forEach(type => {
       const select = document.getElementById(`${type}-preset-select`) as HTMLSelectElement;
       if (select) {
+        // Clear except custom
+        select.innerHTML = '<option value="custom">-- Egyéni feltöltés --</option>';
         SchoolBellApp.BELL_PRESETS.forEach((preset, index) => {
           const opt = document.createElement('option');
           opt.value = index.toString();
@@ -59,33 +101,38 @@ class SchoolBellApp {
     const preset = SchoolBellApp.BELL_PRESETS[parseInt(val)];
     if (!preset) return;
 
-    if (type === 'in') {
-      this.inBellAudio = new Audio(preset.url);
+    if (this.currentUser && firebaseDb) {
+      update(ref(firebaseDb, `users/${this.currentUser.uid}/settings`), {
+        [type === 'in' ? 'audioIn' : 'audioOut']: {
+          type: 'preset',
+          value: val,
+          name: preset.name
+        }
+      });
     } else {
-      this.outBellAudio = new Audio(preset.url);
+      if (type === 'in') {
+        this.inBellAudio = new Audio(preset.url);
+      } else {
+        this.outBellAudio = new Audio(preset.url);
+      }
+
+      const nameEl = document.getElementById(`${type}-bell-name`);
+      if (nameEl) nameEl.textContent = preset.name;
+
+      localStorage.setItem(`audio-${type}-type`, 'preset');
+      localStorage.setItem(`audio-${type}-value`, val);
+      localStorage.removeItem(`audio-${type}`); 
     }
-
-    const nameEl = document.getElementById(`${type}-bell-name`);
-    if (nameEl) nameEl.textContent = preset.name;
-
-    localStorage.setItem(`audio-${type}-type`, 'preset');
-    localStorage.setItem(`audio-${type}-value`, val);
-    localStorage.removeItem(`audio-${type}`); 
   }
 
   private initAudio() {
-    // Initializing the AudioContext for mic
     if (!this.audioContext) this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    
-    // Fire alarm audio (realistic sound)
     this.fireAlarmAudio = new Audio('https://www.orangefreesounds.com/wp-content/uploads/2014/12/Fire-alarm-sound.mp3');
     this.fireAlarmAudio.loop = true;
   }
 
   private async initDeviceSelection() {
     await this.refreshDevices();
-
-    // Re-check devices when they change (plugged/unplugged)
     navigator.mediaDevices.ondevicechange = () => this.refreshDevices();
 
     document.getElementById('audio-output-select')?.addEventListener('change', (e) => {
@@ -98,7 +145,6 @@ class SchoolBellApp {
 
   private async refreshDevices() {
     try {
-        // Request temporary mic access to get named devices (privacy requirement)
         await navigator.mediaDevices.getUserMedia({ audio: true });
         
         const devices = await navigator.mediaDevices.enumerateDevices();
@@ -109,7 +155,7 @@ class SchoolBellApp {
         const inSelect = document.getElementById('audio-input-select') as HTMLSelectElement;
 
         if (outSelect) {
-            outSelect.innerHTML = '<option value="default">Alapértelmezett</option>';
+            outSelect.innerHTML = '<option value="default">Kimenet: Alapértelmezett</option>';
             outputs.forEach(d => {
                 const opt = document.createElement('option');
                 opt.value = d.deviceId;
@@ -119,7 +165,7 @@ class SchoolBellApp {
         }
 
         if (inSelect) {
-            inSelect.innerHTML = '<option value="default">Alapértelmezett</option>';
+            inSelect.innerHTML = '<option value="default">Bemenet: Alapértelmezett</option>';
             inputs.forEach(d => {
                 const opt = document.createElement('option');
                 opt.value = d.deviceId;
@@ -133,7 +179,6 @@ class SchoolBellApp {
   }
 
   private async updateAudioOutput(deviceId: string) {
-    // Web Audio API Context output
     if (this.audioContext && (this.audioContext as any).setSinkId) {
         try {
             await (this.audioContext as any).setSinkId(deviceId);
@@ -142,7 +187,6 @@ class SchoolBellApp {
         }
     }
 
-    // HTML5 Audio elements
     const audios = [this.fireAlarmAudio, this.inBellAudio, this.outBellAudio];
     for (const audio of audios) {
         if (audio && (audio as any).setSinkId) {
@@ -158,7 +202,7 @@ class SchoolBellApp {
   private initClock() {
     const clockEl = document.getElementById('current-clock')!;
     const dateEl = document.getElementById('current-date')!;
-    const update = () => {
+    const updateTime = () => {
       const now = new Date();
       const timeStr = now.toLocaleTimeString('hu-HU', { hour12: false });
       clockEl.textContent = timeStr;
@@ -173,8 +217,8 @@ class SchoolBellApp {
 
       this.checkBells(now);
     };
-    update();
-    setInterval(update, 1000);
+    updateTime();
+    setInterval(updateTime, 1000);
   }
 
   private setupEventListeners() {
@@ -186,17 +230,569 @@ class SchoolBellApp {
 
     document.getElementById('fire-alarm-btn')?.addEventListener('click', () => this.toggleFireAlarm());
     document.getElementById('mic-toggle-btn')?.addEventListener('click', () => this.toggleMic());
-    document.getElementById('manual-ring-btn')?.addEventListener('click', () => this.playBell('in'));
+    document.getElementById('manual-ring-btn')?.addEventListener('click', () => this.triggerManualRing());
 
     document.getElementById('weekend-ringing')?.addEventListener('change', () => {
       const isChecked = (document.getElementById('weekend-ringing') as HTMLInputElement).checked;
-      localStorage.setItem('weekend-ringing', isChecked ? 'true' : 'false');
+      if (this.currentUser && firebaseDb) {
+        update(ref(firebaseDb, `users/${this.currentUser.uid}/settings`), { weekendRinging: isChecked });
+      } else {
+        localStorage.setItem('weekend-ringing', isChecked ? 'true' : 'false');
+      }
+    });
+
+    document.getElementById('bell-duration')?.addEventListener('change', () => {
+      const durationVal = parseInt((document.getElementById('bell-duration') as HTMLInputElement).value);
+      if (this.currentUser && firebaseDb) {
+        update(ref(firebaseDb, `users/${this.currentUser.uid}/settings`), { bellDuration: durationVal });
+      } else {
+        localStorage.setItem('bell-duration', durationVal.toString());
+      }
     });
 
     document.getElementById('in-preset-select')?.addEventListener('change', (e) => this.handlePresetSelection(e, 'in'));
     document.getElementById('out-preset-select')?.addEventListener('change', (e) => this.handlePresetSelection(e, 'out'));
+
+    // Firebase Auth listeners
+    document.getElementById('save-config-btn')?.addEventListener('click', () => {
+      const input = (document.getElementById('firebase-config-input') as HTMLTextAreaElement).value;
+      this.handleFirebaseConfigSave(input);
+    });
+
+    document.getElementById('edit-config-btn')?.addEventListener('click', () => {
+      if (confirm('Biztosan törlöd a Firebase beállításokat és újra konfigurálod?')) {
+        localStorage.removeItem('firebase-bell-config');
+        window.location.reload();
+      }
+    });
+
+    document.getElementById('login-btn')?.addEventListener('click', () => this.handleLogin());
+    document.getElementById('register-btn')?.addEventListener('click', () => this.handleRegister());
+    document.getElementById('logout-btn')?.addEventListener('click', () => {
+      if (firebaseAuth) signOut(firebaseAuth);
+    });
+
+    // Mode Selector listeners
+    document.getElementById('mode-btn-receiver')?.addEventListener('click', () => this.setDeviceMode('receiver'));
+    document.getElementById('mode-btn-controller')?.addEventListener('click', () => this.setDeviceMode('controller'));
   }
 
+  // --- FIREBASE AUTHENTICATION AND SETUP LOGIC ---
+  private setupFirebaseUI() {
+    const setupScreen = document.getElementById('firebase-setup-screen')!;
+    const loginScreen = document.getElementById('login-screen')!;
+    const appContainer = document.getElementById('app')!;
+
+    if (!isFirebaseConfigured()) {
+      setupScreen.classList.remove('hidden');
+      loginScreen.classList.add('hidden');
+      appContainer.classList.add('hidden');
+      
+      const configInput = document.getElementById('firebase-config-input') as HTMLTextAreaElement;
+      if (configInput && !configInput.value) {
+        configInput.value = `const firebaseConfig = {\n  apiKey: "${HARDCODED_CONFIG.apiKey}",\n  authDomain: "${HARDCODED_CONFIG.authDomain}",\n  databaseURL: "${HARDCODED_CONFIG.databaseURL}",\n  projectId: "${HARDCODED_CONFIG.projectId}",\n  storageBucket: "${HARDCODED_CONFIG.storageBucket}",\n  messagingSenderId: "${HARDCODED_CONFIG.messagingSenderId}",\n  appId: "${HARDCODED_CONFIG.appId}"\n};`;
+      }
+      return;
+    }
+
+    setupScreen.classList.add('hidden');
+    
+    if (firebaseAuth) {
+      onAuthStateChanged(firebaseAuth, (user) => {
+        if (user) {
+          this.currentUser = user;
+          loginScreen.classList.add('hidden');
+          appContainer.classList.remove('hidden');
+          
+          const userEmailEl = document.getElementById('user-email-text');
+          if (userEmailEl) userEmailEl.textContent = user.email || 'Bejelentkezve';
+          
+          this.initFirebaseSync();
+        } else {
+          this.currentUser = null;
+          this.cleanupFirebaseSync();
+          loginScreen.classList.remove('hidden');
+          appContainer.classList.add('hidden');
+        }
+        (window as any).lucide?.createIcons();
+      });
+    }
+  }
+
+  private handleFirebaseConfigSave(input: string) {
+    try {
+      const cleanInput = input.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
+      
+      const configObj: any = {};
+      const fields = ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'];
+      
+      fields.forEach(field => {
+        const regex = new RegExp(`${field}\\s*:\\s*["'\`]([^"'\`]+)["'\`]`);
+        const match = cleanInput.match(regex);
+        if (match && match[1]) {
+          configObj[field] = match[1].trim();
+        }
+      });
+      
+      if (!configObj.apiKey || !configObj.projectId) {
+        throw new Error('Nem sikerült kinyerni a kulcsokat. Ellenőrizd a beillesztett kódot!');
+      }
+      
+      const ok = initFirebase(configObj);
+      if (ok) {
+        alert('Firebase beállítások sikeresen mentve! Az oldal újraindul.');
+        window.location.reload();
+      } else {
+        throw new Error('Sikertelen inicializálás.');
+      }
+    } catch (e: any) {
+      alert('Hiba a konfiguráció mentésekor: ' + e.message);
+    }
+  }
+
+  private async handleLogin() {
+    const email = (document.getElementById('auth-email') as HTMLInputElement).value.trim();
+    const password = (document.getElementById('auth-password') as HTMLInputElement).value;
+    
+    if (!email || !password) {
+      alert('Kérlek töltsd ki az összes mezőt!');
+      return;
+    }
+    
+    try {
+      const loginBtn = document.getElementById('login-btn') as HTMLButtonElement;
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'BELÉPÉS...';
+      
+      if (firebaseAuth) {
+        await signInWithEmailAndPassword(firebaseAuth, email, password);
+      }
+    } catch (e: any) {
+      alert('Sikertelen bejelentkezés: ' + this.getHungarianAuthError(e.code));
+    } finally {
+      const loginBtn = document.getElementById('login-btn') as HTMLButtonElement;
+      if (loginBtn) {
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'BEJELENTKEZÉS';
+      }
+    }
+  }
+
+  private async handleRegister() {
+    const email = (document.getElementById('auth-email') as HTMLInputElement).value.trim();
+    const password = (document.getElementById('auth-password') as HTMLInputElement).value;
+    
+    if (!email || !password) {
+      alert('Kérlek töltsd ki az összes mezőt!');
+      return;
+    }
+    
+    if (password.length < 6) {
+      alert('A jelszónak legalább 6 karakterből kell állnia!');
+      return;
+    }
+    
+    try {
+      const registerBtn = document.getElementById('register-btn') as HTMLButtonElement;
+      registerBtn.disabled = true;
+      registerBtn.textContent = 'REGISZTRÁCIÓ...';
+      
+      if (firebaseAuth) {
+        await createUserWithEmailAndPassword(firebaseAuth, email, password);
+        alert('Sikeres regisztráció! Automatikusan beléptettünk.');
+      }
+    } catch (e: any) {
+      alert('Sikertelen regisztráció: ' + this.getHungarianAuthError(e.code));
+    } finally {
+      const registerBtn = document.getElementById('register-btn') as HTMLButtonElement;
+      if (registerBtn) {
+        registerBtn.disabled = false;
+        registerBtn.textContent = 'ÚJ FIÓK REGISZTRÁCIÓJA';
+      }
+    }
+  }
+
+  private getHungarianAuthError(code: string): string {
+    switch (code) {
+      case 'auth/invalid-email': return 'Érvénytelen email cím formátum.';
+      case 'auth/user-disabled': return 'Ez a felhasználói fiók le van tiltva.';
+      case 'auth/user-not-found': return 'Nem található felhasználó ezzel az email címmel.';
+      case 'auth/wrong-password': return 'Hibás jelszó.';
+      case 'auth/email-already-in-use': return 'Ez az email cím már használatban van.';
+      case 'auth/weak-password': return 'A jelszó túl gyenge (legalább 6 karakter szükséges).';
+      case 'auth/invalid-credential': return 'Hibás hitelesítő adatok (jelszó vagy email).';
+      default: return code || 'Ismeretlen hiba történt.';
+    }
+  }
+
+  // --- FIREBASE SYNC LOGIC ---
+  private initFirebaseSync() {
+    if (!firebaseDb || !this.currentUser) return;
+    
+    const uid = this.currentUser.uid;
+    this.schedulesRef = ref(firebaseDb, `users/${uid}/schedules`);
+    this.settingsRef = ref(firebaseDb, `users/${uid}/settings`);
+    this.liveRef = ref(firebaseDb, `users/${uid}/live`);
+    
+    // Load local storage mode preference
+    const savedMode = localStorage.getItem('device-mode') as 'receiver' | 'controller';
+    this.setDeviceMode(savedMode || 'receiver');
+    
+    // Listen for schedules
+    onValue(this.schedulesRef, (snapshot) => {
+      const val = snapshot.val();
+      if (val !== null) {
+        this.schedules = Array.isArray(val) ? val : Object.values(val);
+        this.schedules.sort((a, b) => a.time.localeCompare(b.time));
+        this.renderSchedules();
+      } else {
+        // First sync migration
+        const savedLocal = localStorage.getItem('bell-schedules');
+        if (savedLocal) {
+          try {
+            const localSchedules = JSON.parse(savedLocal);
+            if (localSchedules.length > 0 && this.schedulesRef) {
+              set(this.schedulesRef, localSchedules);
+            }
+          } catch (e) {}
+        }
+      }
+    });
+    
+    // Listen for settings
+    onValue(this.settingsRef, (snapshot) => {
+      const settings = snapshot.val();
+      if (settings) {
+        if (settings.weekendRinging !== undefined) {
+          const wrToggle = document.getElementById('weekend-ringing') as HTMLInputElement;
+          if (wrToggle) wrToggle.checked = settings.weekendRinging;
+        }
+        
+        if (settings.bellDuration !== undefined) {
+          const bdInput = document.getElementById('bell-duration') as HTMLInputElement;
+          if (bdInput) bdInput.value = settings.bellDuration.toString();
+        }
+        
+        ['in', 'out'].forEach(type => {
+          const audioConf = type === 'in' ? settings.audioIn : settings.audioOut;
+          if (audioConf) {
+            const nameEl = document.getElementById(`${type}-bell-name`);
+            const select = document.getElementById(`${type}-preset-select`) as HTMLSelectElement;
+            
+            if (audioConf.type === 'preset') {
+              const presetVal = audioConf.value;
+              const preset = SchoolBellApp.BELL_PRESETS[parseInt(presetVal)];
+              if (preset) {
+                if (type === 'in') this.inBellAudio = new Audio(preset.url);
+                else this.outBellAudio = new Audio(preset.url);
+                if (nameEl) nameEl.textContent = preset.name;
+                if (select) select.value = presetVal;
+              }
+            } else if (audioConf.type === 'custom') {
+              if (audioConf.data) {
+                if (type === 'in') this.inBellAudio = new Audio(audioConf.data);
+                else this.outBellAudio = new Audio(audioConf.data);
+                if (nameEl) nameEl.textContent = audioConf.name || 'Egyéni hang';
+                if (select) select.value = 'custom';
+              }
+            }
+          }
+        });
+      }
+    });
+    
+    // Listen for live events
+    this.setupReceiverListeners();
+  }
+
+  private cleanupFirebaseSync() {
+    if (this.schedulesRef) off(this.schedulesRef);
+    if (this.settingsRef) off(this.settingsRef);
+    if (this.liveRef) off(this.liveRef);
+    
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    if (this.receiverStatusInterval) {
+      clearInterval(this.receiverStatusInterval);
+      this.receiverStatusInterval = null;
+    }
+  }
+
+  private setupReceiverListeners() {
+    if (!firebaseDb || !this.currentUser) return;
+    
+    const uid = this.currentUser.uid;
+    
+    // Listen to manual ring triggers
+    onValue(ref(firebaseDb, `users/${uid}/live/triggerRing`), (snapshot) => {
+      if (this.mode !== 'receiver') return;
+      const data = snapshot.val();
+      if (data && data.type && data.timestamp) {
+        if (data.timestamp > this.lastTriggerRingTimestamp && (Date.now() - data.timestamp) < 5000) {
+          this.lastTriggerRingTimestamp = data.timestamp;
+          this.playBell(data.type);
+        }
+      }
+    });
+    
+    // Listen to fire alarm
+    onValue(ref(firebaseDb, `users/${uid}/live/fireAlarm`), (snapshot) => {
+      const isAlarm = snapshot.val();
+      if (isAlarm !== null) {
+        if (isAlarm !== this.isFireAlarmPlaying) {
+          this.toggleFireAlarmLocally(isAlarm);
+        }
+      }
+    });
+    
+    // Listen to live voice broadcast
+    onValue(ref(firebaseDb, `users/${uid}/live/broadcast`), (snapshot) => {
+      if (this.mode !== 'receiver') return;
+      const data = snapshot.val();
+      if (data && data.audio && data.timestamp) {
+        if (data.timestamp > this.lastPlayedBroadcastTimestamp && (Date.now() - data.timestamp) < 10000) {
+          this.lastPlayedBroadcastTimestamp = data.timestamp;
+          this.playBroadcastAudio(data.audio);
+        }
+      }
+    });
+    
+    // Listen to receiver heartbeat (for controller to display status)
+    onValue(ref(firebaseDb, `users/${uid}/live/receiver/lastSeen`), (snapshot) => {
+      if (this.mode !== 'controller') return;
+      const val = snapshot.val();
+      this.receiverLastSeen = val || 0;
+      this.updateReceiverStatusBadge();
+    });
+  }
+
+  private setDeviceMode(newMode: 'receiver' | 'controller') {
+    this.mode = newMode;
+    localStorage.setItem('device-mode', newMode);
+    
+    const rBtn = document.getElementById('mode-btn-receiver');
+    const cBtn = document.getElementById('mode-btn-controller');
+    
+    if (newMode === 'receiver') {
+      rBtn?.classList.add('active');
+      cBtn?.classList.remove('active');
+      
+      if (this.receiverStatusInterval) {
+        clearInterval(this.receiverStatusInterval);
+        this.receiverStatusInterval = null;
+      }
+      
+      this.toggleLocalInputs(true);
+      
+      // Stop recording if switching modes
+      if (this.isRecording) this.stopRemoteRecording();
+
+      const micBtn = document.getElementById('mic-toggle-btn');
+      if (micBtn) {
+        micBtn.innerHTML = '<i data-lucide="mic"></i> MIKROFON ADÁS';
+        micBtn.className = 'btn btn-neon-green';
+        (window as any).lucide.createIcons();
+      }
+      
+      // Start receiver heartbeat
+      if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
+      this.sendHeartbeat();
+      this.heartbeatInterval = setInterval(() => this.sendHeartbeat(), 5000);
+      
+      this.updateReceiverStatusBadge();
+    } else {
+      cBtn?.classList.add('active');
+      rBtn?.classList.remove('active');
+      
+      if (this.heartbeatInterval) {
+        clearInterval(this.heartbeatInterval);
+        this.heartbeatInterval = null;
+      }
+      
+      this.toggleLocalInputs(false);
+      
+      const micBtn = document.getElementById('mic-toggle-btn');
+      if (micBtn) {
+        micBtn.innerHTML = '<i data-lucide="mic"></i> TÁVOLI HANGOSBEMONDÓ';
+        micBtn.className = 'btn btn-neon-green';
+        (window as any).lucide.createIcons();
+      }
+      
+      // Start receiver offline status checker loop
+      if (this.receiverStatusInterval) clearInterval(this.receiverStatusInterval);
+      this.updateReceiverStatusBadge();
+      this.receiverStatusInterval = setInterval(() => this.updateReceiverStatusBadge(), 1000);
+    }
+  }
+
+  private sendHeartbeat() {
+    if (!firebaseDb || !this.currentUser) return;
+    const uid = this.currentUser.uid;
+    set(ref(firebaseDb, `users/${uid}/live/receiver/lastSeen`), Date.now());
+  }
+
+  private updateReceiverStatusBadge() {
+    const badge = document.getElementById('receiver-status-badge');
+    if (!badge) return;
+    
+    if (this.mode === 'receiver') {
+      badge.textContent = 'LEJÁTSZÓ: AKTÍV';
+      badge.className = 'badge badge-online';
+      badge.style.borderColor = 'var(--success-neon)';
+      badge.style.color = 'var(--success-neon)';
+      badge.style.background = 'rgba(16, 185, 129, 0.1)';
+      return;
+    }
+    
+    const isOnline = (Date.now() - this.receiverLastSeen) < 15000;
+    if (isOnline) {
+      badge.textContent = 'LEJÁTSZÓ: ONLINE';
+      badge.className = 'badge badge-online';
+      badge.style.borderColor = 'var(--success-neon)';
+      badge.style.color = 'var(--success-neon)';
+      badge.style.background = 'rgba(16, 185, 129, 0.1)';
+    } else {
+      badge.textContent = 'LEJÁTSZÓ: OFFLINE';
+      badge.className = 'badge badge-offline';
+      badge.style.borderColor = 'var(--danger-neon)';
+      badge.style.color = 'var(--danger-neon)';
+      badge.style.background = 'rgba(244, 63, 94, 0.1)';
+    }
+  }
+
+  private toggleLocalInputs(enable: boolean) {
+    const outSelect = document.getElementById('audio-output-select') as HTMLSelectElement;
+    if (outSelect) outSelect.disabled = !enable;
+  }
+
+  // --- AUDIO BROADCASTING PLAYBACK ---
+  private playBroadcastAudio(base64Data: string) {
+    try {
+      const audio = new Audio(base64Data);
+      
+      const outSelect = document.getElementById('audio-output-select') as HTMLSelectElement;
+      const deviceId = outSelect ? outSelect.value : 'default';
+      if (deviceId !== 'default' && (audio as any).setSinkId) {
+        (audio as any).setSinkId(deviceId).catch((err: any) => console.error(err));
+      }
+      
+      const isBellPlaying = this.inBellAudio && !this.inBellAudio.paused;
+      const isAlarmPlaying = this.fireAlarmAudio && !this.fireAlarmAudio.paused;
+      
+      if (isBellPlaying) this.inBellAudio!.volume = 0.2;
+      if (isAlarmPlaying) this.fireAlarmAudio!.volume = 0.2;
+      
+      audio.play();
+      audio.onended = () => {
+        if (this.inBellAudio) this.inBellAudio.volume = 1.0;
+        if (this.fireAlarmAudio) this.fireAlarmAudio.volume = 1.0;
+      };
+    } catch (err) {
+      console.error('Error playing broadcast audio:', err);
+    }
+  }
+
+  // --- REMOTE MICROPHONE RECORDING (PTT) ---
+  private async startRemoteRecording() {
+    try {
+      const inSelect = document.getElementById('audio-input-select') as HTMLSelectElement;
+      const deviceId = inSelect ? inSelect.value : 'default';
+      const constraints = { 
+          audio: deviceId === 'default' ? true : { deviceId: { exact: deviceId } } 
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      this.micStream = stream;
+      
+      let options = {};
+      if (MediaRecorder.isTypeSupported('audio/webm')) {
+        options = { mimeType: 'audio/webm' };
+      }
+      
+      this.mediaRecorder = new MediaRecorder(stream, options);
+      this.recordedChunks = [];
+      
+      this.mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          this.recordedChunks.push(e.data);
+        }
+      };
+      
+      this.mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(this.recordedChunks, { type: this.mediaRecorder?.mimeType || 'audio/webm' });
+        
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64Audio = reader.result as string;
+          
+          if (this.currentUser && firebaseDb) {
+            set(ref(firebaseDb, `users/${this.currentUser.uid}/live/broadcast`), {
+              audio: base64Audio,
+              timestamp: Date.now()
+            });
+          }
+        };
+        reader.readAsDataURL(audioBlob);
+        
+        stream.getTracks().forEach(track => track.stop());
+        this.micStream = null;
+      };
+      
+      this.mediaRecorder.start();
+      this.isRecording = true;
+      this.recordingStartTime = Date.now();
+      
+      const overlay = document.getElementById('recording-overlay');
+      if (overlay) overlay.classList.remove('hidden');
+      
+      const durationEl = document.getElementById('rec-duration');
+      this.recordingTimer = setInterval(() => {
+        const duration = ((Date.now() - this.recordingStartTime) / 1000).toFixed(1);
+        if (durationEl) durationEl.textContent = duration;
+        
+        // Max 15 seconds limit to prevent database overhead
+        if (parseFloat(duration) >= 15) {
+          this.stopRemoteRecording();
+        }
+      }, 100);
+      
+      const btn = document.getElementById('mic-toggle-btn');
+      if (btn) {
+        btn.classList.add('mic-active');
+        btn.innerHTML = '<i data-lucide="mic-off"></i> ADÁS LEÁLLÍTÁSA';
+        (window as any).lucide.createIcons();
+      }
+    } catch (err) {
+      console.error('Remote recording failed:', err);
+      alert('Nincs hozzáférés a mikrofonhoz a távoli adáshoz!');
+    }
+  }
+
+  private stopRemoteRecording() {
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+    }
+    this.isRecording = false;
+    
+    if (this.recordingTimer) {
+      clearInterval(this.recordingTimer);
+      this.recordingTimer = null;
+    }
+    
+    const overlay = document.getElementById('recording-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    
+    const btn = document.getElementById('mic-toggle-btn');
+    if (btn) {
+      btn.classList.remove('mic-active');
+      btn.innerHTML = '<i data-lucide="mic"></i> TÁVOLI HANGOSBEMONDÓ';
+      (window as any).lucide.createIcons();
+    }
+  }
+
+  // --- CORE APP LOGIC ---
   private addSchedule(type: 'in' | 'out') {
     const inputId = type === 'in' ? 'in-bell-time' : 'out-bell-time';
     const timeInput = document.getElementById(inputId) as HTMLInputElement;
@@ -208,10 +804,16 @@ class SchoolBellApp {
       type
     };
 
-    this.schedules.push(newSchedule);
-    this.schedules.sort((a, b) => a.time.localeCompare(b.time));
-    this.saveSchedules();
-    this.renderSchedules();
+    const updatedSchedules = [...this.schedules, newSchedule];
+    updatedSchedules.sort((a, b) => a.time.localeCompare(b.time));
+    
+    if (this.currentUser && firebaseDb) {
+      set(ref(firebaseDb, `users/${this.currentUser.uid}/schedules`), updatedSchedules);
+    } else {
+      this.schedules = updatedSchedules;
+      this.saveSchedulesLocally();
+      this.renderSchedules();
+    }
     timeInput.value = '';
   }
 
@@ -220,34 +822,55 @@ class SchoolBellApp {
     if (!file) return;
 
     const fileName = file.name;
-    const nameEl = document.getElementById(`${type}-bell-name`);
-    if (nameEl) nameEl.textContent = fileName;
-
     const reader = new FileReader();
     reader.onload = (e) => {
       const audioData = e.target?.result as string;
-      if (type === 'in') {
-        this.inBellAudio = new Audio(audioData);
-      } else {
-        this.outBellAudio = new Audio(audioData);
+      
+      // Limit to 2.8MB base64 string size
+      if (audioData.length > 2.8 * 1024 * 1024) {
+        alert('A fájl mérete túl nagy! Kérlek válassz 2MB-nál kisebb hangot.');
+        return;
       }
-      localStorage.setItem(`audio-${type}`, audioData);
-      localStorage.setItem(`audio-${type}-name`, fileName);
+
+      if (this.currentUser && firebaseDb) {
+        update(ref(firebaseDb, `users/${this.currentUser.uid}/settings`), {
+          [type === 'in' ? 'audioIn' : 'audioOut']: {
+            type: 'custom',
+            name: fileName,
+            data: audioData
+          }
+        });
+      } else {
+        if (type === 'in') {
+          this.inBellAudio = new Audio(audioData);
+        } else {
+          this.outBellAudio = new Audio(audioData);
+        }
+        const nameEl = document.getElementById(`${type}-bell-name`);
+        if (nameEl) nameEl.textContent = fileName;
+        localStorage.setItem(`audio-${type}-type`, 'custom');
+        localStorage.setItem(`audio-${type}`, audioData);
+        localStorage.setItem(`audio-${type}-name`, fileName);
+      }
     };
     reader.readAsDataURL(file);
   }
 
   private checkBells(now: Date) {
-    const currentTime = now.toTimeString().slice(0, 5); // HH:MM
+    const currentTime = now.toTimeString().slice(0, 5);
     const seconds = now.getSeconds();
     const day = now.getDay();
     const isWeekend = day === 0 || day === 6;
+    
     const weekendToggle = document.getElementById('weekend-ringing') as HTMLInputElement;
     const isWeekendRingingEnabled = weekendToggle ? weekendToggle.checked : false;
 
-    if (seconds === 0 && (!isWeekend || isWeekendRingingEnabled)) {
-      const activeBells = this.schedules.filter(s => s.time === currentTime);
-      activeBells.forEach(bell => this.playBell(bell.type));
+    // ONLY Receiver runs local schedules
+    if (this.mode === 'receiver') {
+      if (seconds === 0 && (!isWeekend || isWeekendRingingEnabled)) {
+        const activeBells = this.schedules.filter(s => s.time === currentTime);
+        activeBells.forEach(bell => this.playBell(bell.type));
+      }
     }
 
     this.updateNextBell(currentTime, isWeekend && !isWeekendRingingEnabled);
@@ -259,55 +882,90 @@ class SchoolBellApp {
     const durationLimit = parseInt(durationInput.value) * 1000;
 
     if (audio) {
-      audio.currentTime = 0;
-      audio.play();
-      setTimeout(() => {
-        audio.pause();
+      try {
         audio.currentTime = 0;
-      }, durationLimit);
+        audio.play();
+        setTimeout(() => {
+          audio.pause();
+          audio.currentTime = 0;
+        }, durationLimit);
+      } catch (err) {
+        console.error('Error playing bell:', err);
+      }
+    }
+  }
+
+  private triggerManualRing() {
+    if (this.mode === 'controller') {
+      if (!this.currentUser || !firebaseDb) return;
+      set(ref(firebaseDb, `users/${this.currentUser.uid}/live/triggerRing`), {
+        type: 'in',
+        timestamp: Date.now()
+      });
+    } else {
+      this.playBell('in');
     }
   }
 
   private toggleFireAlarm() {
-    if (this.isFireAlarmPlaying) {
+    if (this.currentUser && firebaseDb) {
+      set(ref(firebaseDb, `users/${this.currentUser.uid}/live/fireAlarm`), !this.isFireAlarmPlaying);
+    } else {
+      this.toggleFireAlarmLocally(!this.isFireAlarmPlaying);
+    }
+  }
+
+  private toggleFireAlarmLocally(isPlaying: boolean) {
+    this.isFireAlarmPlaying = isPlaying;
+    const btn = document.getElementById('fire-alarm-btn');
+    
+    if (isPlaying) {
+      this.fireAlarmAudio?.play();
+      btn?.classList.add('btn-pulse');
+    } else {
       this.fireAlarmAudio?.pause();
       if (this.fireAlarmAudio) this.fireAlarmAudio.currentTime = 0;
-      document.getElementById('fire-alarm-btn')?.classList.remove('btn-pulse');
-    } else {
-      this.fireAlarmAudio?.play();
-      document.getElementById('fire-alarm-btn')?.classList.add('btn-pulse');
+      btn?.classList.remove('btn-pulse');
     }
-    this.isFireAlarmPlaying = !this.isFireAlarmPlaying;
   }
 
   private async toggleMic() {
-    const btn = document.getElementById('mic-toggle-btn');
-    if (this.micStream) {
-      this.micStream.getTracks().forEach(track => track.stop());
-      this.micStream = null;
-      this.micSource?.disconnect();
-      btn?.classList.remove('mic-active');
-      btn!.innerHTML = '<i data-lucide="mic"></i> MIKROFON ADÁS';
-      (window as any).lucide.createIcons();
+    if (this.mode === 'controller') {
+      if (this.isRecording) {
+        this.stopRemoteRecording();
+      } else {
+        await this.startRemoteRecording();
+      }
     } else {
-      try {
-        const inSelect = document.getElementById('audio-input-select') as HTMLSelectElement;
-        const deviceId = inSelect ? inSelect.value : 'default';
-        
-        const constraints = { 
-            audio: deviceId === 'default' ? true : { deviceId: { exact: deviceId } } 
-        };
-
-        this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
-        if (!this.audioContext) this.audioContext = new AudioContext();
-        this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
-        this.micSource.connect(this.audioContext.destination);
-        btn?.classList.add('mic-active');
-        btn!.innerHTML = '<i data-lucide="mic-off"></i> LEÁLLÍTÁS';
+      // Local Microphone Loopback
+      const btn = document.getElementById('mic-toggle-btn');
+      if (this.micStream) {
+        this.micStream.getTracks().forEach(track => track.stop());
+        this.micStream = null;
+        this.micSource?.disconnect();
+        btn?.classList.remove('mic-active');
+        btn!.innerHTML = '<i data-lucide="mic"></i> MIKROFON ADÁS';
         (window as any).lucide.createIcons();
-      } catch (err) {
-        console.error('Mic access denied', err);
-        alert('Nincs hozzáférés a mikrofonhoz!');
+      } else {
+        try {
+          const inSelect = document.getElementById('audio-input-select') as HTMLSelectElement;
+          const deviceId = inSelect ? inSelect.value : 'default';
+          
+          const constraints = { 
+              audio: deviceId === 'default' ? true : { deviceId: { exact: deviceId } } 
+          };
+
+          this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
+          if (!this.audioContext) this.audioContext = new AudioContext();
+          this.micSource = this.audioContext.createMediaStreamSource(this.micStream);
+          this.micSource.connect(this.audioContext.destination);
+          btn?.classList.add('mic-active');
+          btn!.innerHTML = '<i data-lucide="mic-off"></i> LEÁLLÍTÁS';
+          (window as any).lucide.createIcons();
+        } catch (err) {
+          console.error('Mic access denied', err);
+          alert('Nincs hozzáférés a mikrofonhoz!');
+        }
       }
     }
   }
@@ -336,16 +994,21 @@ class SchoolBellApp {
   }
 
   public deleteSchedule(id: string) {
-    this.schedules = this.schedules.filter(s => s.id !== id);
-    this.saveSchedules();
-    this.renderSchedules();
+    const updatedSchedules = this.schedules.filter(s => s.id !== id);
+    if (this.currentUser && firebaseDb) {
+      set(ref(firebaseDb, `users/${this.currentUser.uid}/schedules`), updatedSchedules);
+    } else {
+      this.schedules = updatedSchedules;
+      this.saveSchedulesLocally();
+      this.renderSchedules();
+    }
   }
 
-  private saveSchedules() {
+  private saveSchedulesLocally() {
     localStorage.setItem('bell-schedules', JSON.stringify(this.schedules));
   }
 
-  private loadSchedules() {
+  private loadSchedulesLocally() {
     const saved = localStorage.getItem('bell-schedules');
     if (saved) this.schedules = JSON.parse(saved);
 
@@ -409,3 +1072,4 @@ class SchoolBellApp {
 
 // @ts-ignore
 window.app = new SchoolBellApp();
+export { SchoolBellApp };

@@ -13,12 +13,68 @@
     <meta name="theme-color" content="#030712">
   </head>
   <body>
-    <div id="app">
+    <!-- Firebase Config Setup Screen -->
+    <div id="firebase-setup-screen" class="auth-overlay">
+      <div class="glass-card auth-card">
+        <h2 style="display: flex; align-items: center; gap: 0.5rem; justify-content: center;"><i data-lucide="database" style="color: var(--accent-neon);"></i> Firebase Beállítás</h2>
+        <p class="auth-desc">Másold be a Firebase Web App konfigurációs kódját a csatlakozáshoz:</p>
+        
+        <div class="input-group">
+          <textarea id="firebase-config-input" rows="8" placeholder='const firebaseConfig = {&#10;  apiKey: "...",&#10;  authDomain: "...",&#10;  databaseURL: "...",&#10;  projectId: "...",&#10;  storageBucket: "...",&#10;  messagingSenderId: "...",&#10;  appId: "..."&#10;};'></textarea>
+        </div>
+        
+        <button class="btn btn-neon-green" id="save-config-btn" style="width: 100%;">KONFIGURÁCIÓ MENTÉSE</button>
+      </div>
+    </div>
+
+    <!-- Login / Register Screen -->
+    <div id="login-screen" class="auth-overlay hidden">
+      <div class="glass-card auth-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; width: 100%;">
+          <h2 id="auth-title" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;"><i data-lucide="log-in" style="color: var(--accent-neon);"></i> Bejelentkezés</h2>
+          <button class="btn-icon-mini" id="edit-config-btn" title="Firebase beállítások módosítása"><i data-lucide="settings" style="width: 16px; height: 16px;"></i></button>
+        </div>
+        <p class="auth-desc" id="auth-subtitle">Jelentkezz be a csengő távvezérléséhez és a felhő szinkronizációhoz.</p>
+        
+        <div class="input-group">
+          <label>Email cím</label>
+          <input type="email" id="auth-email" placeholder="iskola@email.hu" style="width: 100%;">
+        </div>
+        <div class="input-group" style="margin-top: 1rem;">
+          <label>Jelszó</label>
+          <input type="password" id="auth-password" placeholder="••••••••" style="width: 100%;">
+        </div>
+        
+        <div class="auth-buttons" style="margin-top: 2rem; display: flex; flex-direction: column; gap: 0.75rem; width: 100%;">
+          <button class="btn btn-neon-green" id="login-btn" style="width: 100%;">BEJELENTKEZÉS</button>
+          <button class="btn btn-outline" id="register-btn" style="width: 100%;">ÚJ FIÓK REGISZTRÁCIÓJA</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="app" class="hidden">
+      <!-- Firebase Status Header -->
+      <div class="firebase-header glass-card">
+        <div class="firebase-user-info" style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-main);">
+          <i data-lucide="user" style="color: var(--accent-neon); width: 18px; height: 18px;"></i>
+          <span id="user-email-text">felhasznalo@email.hu</span>
+        </div>
+        <div class="device-mode-selector" style="display: flex; align-items: center; gap: 0.5rem;">
+          <span class="mode-label" style="font-weight: 700; font-size: 0.75rem; color: var(--text-dim); margin-right: 0.5rem;">ÜZEMMÓD:</span>
+          <button class="btn-mode active" id="mode-btn-receiver" data-mode="receiver">💻 LEJÁTSZÓ (Laptop)</button>
+          <button class="btn-mode" id="mode-btn-controller" data-mode="controller">📱 VEZÉRLŐ (Mobil)</button>
+        </div>
+        <button class="btn btn-outline" id="logout-btn" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; display: flex; align-items: center; gap: 0.3rem;">
+          <i data-lucide="log-out" style="width: 14px; height: 14px;"></i> Kilépés
+        </button>
+      </div>
+
       <div class="glass-container">
         <!-- Main Status Card -->
         <div class="glass-card hero-card">
-          <div class="hero-header">
+          <div class="hero-header" style="display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; width: 100%;">
             <div class="badge">AKTÍV ÜZEMMÓD: <span id="mode-status">AUTOMATIKUS</span></div>
+            <div class="badge" id="receiver-status-badge" style="border-color: var(--danger-neon); color: var(--danger-neon); background: rgba(244,63,94,0.1);">LEJÁTSZÓ: OFFLINE</div>
           </div>
           
           <div class="clock-section">
@@ -48,6 +104,18 @@
                   <span class="slider"></span>
                 </label>
               </div>
+            </div>
+
+            <!-- Broadcast Recording Waveform overlay -->
+            <div id="recording-overlay" class="recording-overlay hidden" style="margin-bottom: 1rem; display: flex; align-items: center; justify-content: center; gap: 1rem; padding: 0.75rem; border-radius: 12px; background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success-neon);">
+              <div class="wave-container" style="display: flex; gap: 4px; align-items: center; height: 24px;">
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+                <div class="wave-bar"></div>
+              </div>
+              <span class="recording-timer" style="font-weight: 700; font-size: 0.85rem; color: var(--success-neon); letter-spacing: 0.05em;">ÉLŐ ADÁS: <span id="rec-duration">0.0</span> mp</span>
             </div>
 
             <div class="main-actions">
