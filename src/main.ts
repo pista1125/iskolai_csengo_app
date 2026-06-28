@@ -233,24 +233,44 @@ class SchoolBellApp {
   private initClock() {
     const clockEl = document.getElementById('current-clock')!;
     const dateEl = document.getElementById('current-date')!;
-    const updateTime = () => {
-      const now = new Date();
-      const timeStr = now.toLocaleTimeString('hu-HU', { hour12: false });
-      clockEl.textContent = timeStr;
-      
-      const dateStr = now.toLocaleDateString('hu-HU', { 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric',
-        weekday: 'long'
-      }).toUpperCase();
-      if (dateEl) dateEl.textContent = dateStr;
+    let lastSecond = -1;
+    let lastDateStr = '';
 
-      this.checkBells(now);
+    const tick = () => {
+      const now = new Date();
+      const currentSecond = now.getSeconds() + now.getMinutes() * 60 + now.getHours() * 3600;
+
+      // Only update the DOM when the second actually changes.
+      // Using requestAnimationFrame syncs updates with the display
+      // refresh cycle, which prevents frame-tearing on Android GPUs
+      // that were triggered by setInterval firing mid-frame.
+      if (currentSecond !== lastSecond) {
+        lastSecond = currentSecond;
+
+        const timeStr = now.toLocaleTimeString('hu-HU', { hour12: false });
+        clockEl.textContent = timeStr;
+
+        // Date only changes once a day — cache it to avoid unnecessary reflows
+        const dateStr = now.toLocaleDateString('hu-HU', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          weekday: 'long'
+        }).toUpperCase();
+        if (dateStr !== lastDateStr) {
+          lastDateStr = dateStr;
+          if (dateEl) dateEl.textContent = dateStr;
+        }
+
+        this.checkBells(now);
+      }
+
+      requestAnimationFrame(tick);
     };
-    updateTime();
-    setInterval(updateTime, 1000);
+
+    requestAnimationFrame(tick);
   }
+
 
   private setupEventListeners() {
     document.getElementById('add-in-bell')?.addEventListener('click', () => this.addSchedule('in'));

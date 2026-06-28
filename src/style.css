@@ -84,9 +84,16 @@ body {
     font-size: clamp(2.2rem, 12vw, 5rem);
     min-width: unset;
     width: 100%;
+    /* CRITICAL: Remove text-shadow on mobile entirely.
+       text-shadow with blur radius is re-rasterized on EVERY frame
+       that changes the text. On Android (Adreno/Mali GPUs) this
+       causes the compositor to flush its tile cache, which tears the
+       entire screen into horizontal scan-line artifacts.
+       The glow effect is invisible on small bright screens anyway. */
+    text-shadow: none;
   }
 
-  /* Disable GPU-heavy animations on mobile */
+  /* Disable ALL GPU-heavy animations on mobile */
   .btn-pulse {
     animation: none;
     box-shadow: 0 0 20px var(--danger-glow);
@@ -101,12 +108,20 @@ body {
     animation: none;
   }
 
+  /* Disable all neon box-shadows on mobile (GPU compositing cost) */
+  .btn-neon-red:hover, .btn-neon-green:hover, .btn-neon-blue:hover {
+    box-shadow: none;
+    transform: none;
+  }
+
   /* Fix emergency button position on mobile */
   .emergency-btn {
     bottom: 1rem;
     right: 1rem;
     padding: 1rem 1.5rem;
     font-size: 1rem;
+    box-shadow: none;
+    will-change: auto;
   }
 
   #app {
@@ -125,6 +140,12 @@ body {
   border: 1px solid rgba(34, 211, 238, 0.2);
   /* Contain any overflow from children (clock) */
   overflow: hidden;
+  /* Force this card onto its own GPU compositing layer so that the
+     clock's 1-second textContent updates don't trigger a full-page
+     repaint (which caused the scan-line corruption on Android). */
+  isolation: isolate;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 .badge {
@@ -138,6 +159,17 @@ body {
   letter-spacing: 0.1em;
 }
 
+.clock-section {
+  /* Give the clock wrapper its own stacking context so that repaints
+     are fully contained inside this box and never propagate to the
+     rest of the page (the root cause of the full-page scan-line
+     corruption on certain Android GPU drivers). */
+  contain: layout style paint;
+  isolation: isolate;
+  width: 100%;
+  text-align: center;
+}
+
 .digital-clock {
   font-family: var(--font-digital);
   font-size: 5rem;
@@ -147,21 +179,20 @@ body {
   text-shadow: 0 0 30px var(--accent-glow);
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
-  /* Do NOT use min-width here — on mobile it overflows and causes
-     a full-page layout reflow every second (the clock glitch bug) */
   display: block;
   width: 100%;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
-  /* Force the clock onto its own GPU compositing layer.
-     Without this, the text-shadow blur is re-composited on every
-     second tick, causing a visible blur/smear artefact on some
-     Android GPUs / WebKit versions. */
-  will-change: transform;
+  /* Promote to its own GPU compositing layer.
+     will-change: contents tells the browser that *text* will change
+     frequently (not transform), so it pre-allocates a texture for it
+     and avoids re-compositing surrounding elements on every tick. */
+  will-change: contents;
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
-  /* Prevent sub-pixel anti-aliasing shifts between frames */
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
