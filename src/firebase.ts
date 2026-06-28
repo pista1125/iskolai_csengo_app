@@ -17,17 +17,15 @@ export interface FirebaseConfig {
 
 const DEFAULT_CONFIG_KEY = 'firebase-bell-config';
 
-// User's Firebase configuration hardcoded as default
+// User's Firebase configuration loaded from environment variables
 const HARDCODED_CONFIG: FirebaseConfig = {
-  apiKey: "AIzaSyCVhBC8HbSzgml4PchZX0XXFSvGm0RAX6I",
-  authDomain: "csengo-ab784.firebaseapp.com",
-  projectId: "csengo-ab784",
-  storageBucket: "csengo-ab784.firebasestorage.app",
-  messagingSenderId: "719144611327",
-  appId: "1:719144611327:web:f5b56a9f046d30483acbca",
-  // Hungarian users typically host in Europe (europe-west1). If US, it will be csengo-ab784-default-rtdb.firebaseio.com.
-  // The user can easily override this in the UI if needed.
-  databaseURL: "https://csengo-ab784-default-rtdb.europe-west1.firebasedatabase.app"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "",
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || ""
 };
 
 export function getSavedFirebaseConfig(): FirebaseConfig | null {
