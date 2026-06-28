@@ -24,9 +24,9 @@ interface BellSchedule {
 
 class SchoolBellApp {
   private schedules: BellSchedule[] = [];
-  private inBellAudio: HTMLAudioElement | null = null;
-  private outBellAudio: HTMLAudioElement | null = null;
-  private fireAlarmAudio: HTMLAudioElement | null = null;
+  private inBellAudio = new Audio();
+  private outBellAudio = new Audio();
+  private fireAlarmAudio = new Audio('https://www.orangefreesounds.com/wp-content/uploads/2014/12/Fire-alarm-sound.mp3');
   private isFireAlarmPlaying = false;
   private audioUnlocked = false;
   
@@ -112,9 +112,9 @@ class SchoolBellApp {
       });
     } else {
       if (type === 'in') {
-        this.inBellAudio = new Audio(preset.url);
+        this.inBellAudio.src = preset.url;
       } else {
-        this.outBellAudio = new Audio(preset.url);
+        this.outBellAudio.src = preset.url;
       }
 
       const nameEl = document.getElementById(`${type}-bell-name`);
@@ -128,7 +128,6 @@ class SchoolBellApp {
 
   private initAudio() {
     if (!this.audioContext) this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    this.fireAlarmAudio = new Audio('https://www.orangefreesounds.com/wp-content/uploads/2014/12/Fire-alarm-sound.mp3');
     this.fireAlarmAudio.loop = true;
 
     const unlock = () => {
@@ -516,15 +515,15 @@ class SchoolBellApp {
               const presetVal = audioConf.value;
               const preset = SchoolBellApp.BELL_PRESETS[parseInt(presetVal)];
               if (preset) {
-                if (type === 'in') this.inBellAudio = new Audio(preset.url);
-                else this.outBellAudio = new Audio(preset.url);
+                if (type === 'in') this.inBellAudio.src = preset.url;
+                else this.outBellAudio.src = preset.url;
                 if (nameEl) nameEl.textContent = preset.name;
                 if (select) select.value = presetVal;
               }
             } else if (audioConf.type === 'custom') {
               if (audioConf.data) {
-                if (type === 'in') this.inBellAudio = new Audio(audioConf.data);
-                else this.outBellAudio = new Audio(audioConf.data);
+                if (type === 'in') this.inBellAudio.src = audioConf.data;
+                else this.outBellAudio.src = audioConf.data;
                 if (nameEl) nameEl.textContent = audioConf.name || 'Egyéni hang';
                 if (select) select.value = 'custom';
               }
@@ -820,8 +819,12 @@ class SchoolBellApp {
   }
 
   private stopRemoteRecording() {
-    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      this.mediaRecorder.stop();
+    try {
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        this.mediaRecorder.stop();
+      }
+    } catch (e) {
+      console.error('Error stopping MediaRecorder:', e);
     }
     this.isRecording = false;
     
@@ -891,9 +894,9 @@ class SchoolBellApp {
         });
       } else {
         if (type === 'in') {
-          this.inBellAudio = new Audio(audioData);
+          this.inBellAudio.src = audioData;
         } else {
-          this.outBellAudio = new Audio(audioData);
+          this.outBellAudio.src = audioData;
         }
         const nameEl = document.getElementById(`${type}-bell-name`);
         if (nameEl) nameEl.textContent = fileName;
@@ -1076,8 +1079,8 @@ class SchoolBellApp {
             if (val !== null) {
                 const preset = SchoolBellApp.BELL_PRESETS[parseInt(val)];
                 if (preset) {
-                    if (type === 'in') this.inBellAudio = new Audio(preset.url);
-                    else this.outBellAudio = new Audio(preset.url);
+                    if (type === 'in') this.inBellAudio.src = preset.url;
+                    else this.outBellAudio.src = preset.url;
                     if (nameEl) nameEl.textContent = preset.name;
                     if (select) select.value = val;
                 }
@@ -1086,8 +1089,8 @@ class SchoolBellApp {
             const data = localStorage.getItem(`audio-${type}`);
             const name = localStorage.getItem(`audio-${type}-name`);
             if (data) {
-                if (type === 'in') this.inBellAudio = new Audio(data);
-                else this.outBellAudio = new Audio(data);
+                if (type === 'in') this.inBellAudio.src = data;
+                else this.outBellAudio.src = data;
                 if (nameEl && name) nameEl.textContent = name;
                 if (select) select.value = 'custom';
             }
