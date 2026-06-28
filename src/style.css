@@ -32,6 +32,8 @@ body {
   justify-content: center;
   align-items: center;
   overflow-x: hidden;
+  /* Prevent GPU compositing artifacts on mobile */
+  -webkit-overflow-scrolling: touch;
 }
 
 #app {
@@ -66,10 +68,50 @@ body {
 }
 
 @media (max-width: 768px) {
+  body {
+    /* Remove gradient on mobile - major repaint source */
+    background-image: none;
+  }
+
   .glass-card {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background: rgba(15, 23, 42, 0.9);
+    background: rgba(15, 23, 42, 0.95);
+  }
+
+  .digital-clock {
+    /* Fit clock to screen on mobile */
+    font-size: clamp(2.2rem, 12vw, 5rem);
+    min-width: unset;
+    width: 100%;
+  }
+
+  /* Disable GPU-heavy animations on mobile */
+  .btn-pulse {
+    animation: none;
+    box-shadow: 0 0 20px var(--danger-glow);
+  }
+
+  .btn-neon-green.mic-active,
+  .btn-neon-blue.mic-active {
+    animation: none;
+  }
+
+  .autoplay-warning {
+    animation: none;
+  }
+
+  /* Fix emergency button position on mobile */
+  .emergency-btn {
+    bottom: 1rem;
+    right: 1rem;
+    padding: 1rem 1.5rem;
+    font-size: 1rem;
+  }
+
+  #app {
+    padding: 1rem;
+    gap: 1rem;
   }
 }
 
@@ -106,6 +148,8 @@ body {
   display: inline-block;
   min-width: 380px;
   text-align: center;
+  /* Prevent layout overflow artifacts */
+  max-width: 100%;
 }
 
 .date-footer {
@@ -398,6 +442,11 @@ input[type="time"], input[type="number"], select {
   font-size: 1.2rem;
   border-radius: 100px;
   box-shadow: 0 0 30px var(--danger-glow);
+  /* Isolate this fixed element on its own GPU layer to avoid compositing glitches */
+  will-change: transform;
+  isolation: isolate;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 /* Switch Styles */
