@@ -93,6 +93,11 @@ body {
   color: var(--accent-neon);
   line-height: 1;
   text-shadow: 0 0 30px var(--accent-glow);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  display: inline-block;
+  min-width: 380px;
+  text-align: center;
 }
 
 .date-footer {
