@@ -797,3 +797,101 @@ input:checked + .slider:before {
   animation: pulse 2s infinite;
 }
 
+/* Google Auth button */
+.btn-google {
+  background: #ffffff !important;
+  color: #1f2937 !important;
+  border: 1px solid #e5e7eb !important;
+  font-family: var(--font-main);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  font-weight: 700;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn-google:hover {
+  background: #f3f4f6 !important;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.25) !important;
+  transform: translateY(-2px);
+}
+
+/* Password field visibility toggle */
+.password-wrapper {
+  position: relative;
+  display: flex;
+  width: 100%;
+}
+
+.password-wrapper input {
+  padding-right: 2.75rem !important;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.2s, transform 0.2s;
+  z-index: 10;
+}
+
+.password-toggle-btn:hover {
+  color: var(--accent-neon);
+  transform: translateY(-50%) scale(1.1);
+}
+
+.password-toggle-btn:focus {
+  outline: none;
+}
+
+/* Authentication Screen Divider */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin: 1.5rem 0;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.auth-divider span:not(.auth-divider-text) {
+  flex: 1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.auth-divider-text {
+  padding: 0 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* Text buttons / links inside Auth screens */
+.auth-link {
+  background: transparent;
+  border: none;
+  color: var(--accent-neon);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 0.85rem;
+  margin-top: 1rem;
+  transition: all 0.3s;
+}
+
+.auth-link:hover {
+  color: white;
+  text-shadow: 0 0 8px var(--accent-glow);
+}
+
+
